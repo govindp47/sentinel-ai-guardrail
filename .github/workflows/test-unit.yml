@@ -44,10 +44,12 @@ jobs:
         run: uv sync --frozen --extra dev
 
       - name: Run pytest
+        shell: bash
         run: |
+          set +e
           uv run pytest backend/tests/ -x --tb=short -q --no-header
           status=$?
-          # Exit code 5 = no tests collected — acceptable on empty scaffold
+          set -e
           if [ $status -eq 5 ]; then
             echo "No tests collected (empty scaffold) — treating as pass."
             exit 0

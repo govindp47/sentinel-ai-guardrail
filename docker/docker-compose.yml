@@ -1,0 +1,91 @@
+# =============================================================================
+# SentinelAI Guardrail — Production Compose
+# =============================================================================
+# Usage: docker compose -f docker/docker-compose.yml up -d
+#
+# Services: backend (FastAPI+Uvicorn), caddy (reverse proxy)
+# Secrets are injected via .env file — never baked into images.
+# =============================================================================
+
+name: sentinelai
+
+services:
+  # ---------------------------------------------------------------------------
+  # Backend — FastAPI application server
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+      target: production
+      args:
+        EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+    image: sentinelai-backend:latest
+    container_name: sentinel-backend
+    restart: unless-stopped
+    expose:
+      - "8000"
+    volumes:
+      - sentinel_data:/app/data
+    env_file:
+      - ../.env
+    environment:
+      APP_ENV: production
+      LOG_FORMAT: json
+      DATABASE_URL: sqlite+aiosqlite:////app/data/sentinel.db
+      FAISS_INDEX_DIR: /app/data/faiss_indexes
+      STORAGE_LOCAL_DIR: /app/data/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - sentinel-net
+    depends_on: []
+
+  # ---------------------------------------------------------------------------
+  # Caddy — TLS-terminating reverse proxy
+  # ---------------------------------------------------------------------------
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: sentinel-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Caddy automatic HTTPS certificates + state
+      - caddy_data:/data
+      - caddy_config:/config
+      # Frontend static build output (populated by CI before compose up)
+      - ../frontend/dist:/app/static:ro
+    networks:
+      - sentinel-net
+    depends_on:
+      backend:
+        condition: service_healthy
+
+# -----------------------------------------------------------------------------
+# Named Volumes — persistent across `docker compose down`; removed with -v
+# -----------------------------------------------------------------------------
+volumes:
+  sentinel_data:
+    name: sentinelai_data
+    driver: local
+  caddy_data:
+    name: sentinelai_caddy_data
+    driver: local
+  caddy_config:
+    name: sentinelai_caddy_config
+    driver: local
+
+# -----------------------------------------------------------------------------
+# Networks
+# -----------------------------------------------------------------------------
+networks:
+  sentinel-net:
+    name: sentinelai-net
+    driver: bridge

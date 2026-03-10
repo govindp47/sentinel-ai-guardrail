@@ -1,0 +1,49 @@
+# Python bytecode
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Virtual environments
+**/.venv/
+**/venv/
+**/.env
+**/.env.*
+!**/.env.example
+
+# uv lockfile is used during build — exclude to force COPY of pinned file
+# (Do NOT ignore uv.lock — it must be COPY'd for `uv sync --frozen`)
+# uv.lock
+
+# Test artefacts
+**/htmlcov/
+**/.coverage
+**/coverage.xml
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+**/*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker files themselves (not needed in context)
+docker/docker-compose*.yml
+
+# Data directories (mounted as volumes at runtime)
+data/
+*.db

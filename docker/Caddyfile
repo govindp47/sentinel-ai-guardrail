@@ -1,0 +1,40 @@
+# =============================================================================
+# SentinelAI Guardrail — Caddyfile (stub)
+# =============================================================================
+# Binds on :80 inside the container (mapped to host :80/:443 in production).
+# In Docker Compose dev: not used (backend is accessed directly).
+# In Docker Compose prod: proxies API to backend, serves frontend static.
+# =============================================================================
+
+:80 {
+    # API — REST and WebSocket
+    handle /v1/* {
+        reverse_proxy backend:8000
+    }
+
+    handle /ws/* {
+        reverse_proxy backend:8000 {
+            # Required for WebSocket upgrade
+            header_up Connection {http.request.header.Connection}
+            header_up Upgrade {http.request.header.Upgrade}
+        }
+    }
+
+    # Health endpoint pass-through
+    handle /health* {
+        reverse_proxy backend:8000
+    }
+
+    # Frontend static assets
+    handle {
+        root * /app/static
+        try_files {path} /index.html
+        file_server
+    }
+
+    # Access logging
+    log {
+        output stdout
+        format json
+    }
+}

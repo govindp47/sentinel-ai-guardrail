@@ -1,0 +1,134 @@
+# =============================================================================
+# SentinelAI Guardrail — Backend Multi-Stage Dockerfile
+# =============================================================================
+# Stages:
+#   base          - Python 3.12-slim + system deps, non-root user
+#   build         - uv dependency installation
+#   test          - source copy for dev / CI (no model preload)
+#   model-preload - downloads SentenceTransformer model into image cache
+#   production    - final runtime image
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage: base
+# -----------------------------------------------------------------------------
+FROM python:3.12-slim AS base
+
+# Prevent .pyc files and enable stdout flushing
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONFAULTHANDLER=1
+
+# System dependencies:
+#   libgomp1   — required by FAISS (OpenMP threading)
+#   curl       — healthcheck
+#   ca-certificates — HTTPS for model downloads
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgomp1 \
+        curl \
+        ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user that will own all process files
+RUN groupadd --gid 1001 sentinel \
+    && useradd --uid 1001 --gid sentinel --shell /bin/bash --create-home sentinel
+
+WORKDIR /app
+
+# -----------------------------------------------------------------------------
+# Stage: build
+# -----------------------------------------------------------------------------
+FROM base AS build
+
+# Install uv (fast Python package installer / lock-file aware)
+COPY --from=ghcr.io/astral-sh/uv:0.4.27 /uv /usr/local/bin/uv
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_NO_CACHE=0 \
+    PATH="/app/.venv/bin:$PATH"
+
+# Copy only dependency manifests first — layer is cached unless deps change
+COPY pyproject.toml uv.lock ./
+
+# Install production dependencies only (no dev extras)
+# --frozen: refuse to update lock file; fail if out of sync
+RUN uv sync --frozen --no-dev --no-install-project
+
+# -----------------------------------------------------------------------------
+# Stage: test
+# Extends build with source code; used for CI and local dev volume mounts.
+# No model pre-download — keeps this stage fast.
+# -----------------------------------------------------------------------------
+FROM build AS test
+
+# Copy full source
+COPY backend/src/ ./backend/src/
+
+# Fix ownership before switching to non-root user
+RUN chown -R sentinel:sentinel /app/backend/src
+
+ENV PYTHONPATH=/app/backend/src
+
+# Switch to non-root for all subsequent operations
+USER sentinel
+
+# Smoke-test: package must be importable (no main.py required)
+RUN python -c "import sentinel"
+
+# Default command for CI test runs; overridden in docker-compose.dev.yml
+CMD ["python", "-m", "pytest", "backend/tests/", "-x", "--tb=short"]
+
+# -----------------------------------------------------------------------------
+# Stage: model-preload
+# Downloads the SentenceTransformer embedding model into /app/.cache so the
+# production image ships with the model and avoids network calls at runtime.
+# -----------------------------------------------------------------------------
+FROM build AS model-preload
+
+ARG EMBEDDING_MODEL=all-MiniLM-L6-v2
+
+ENV EMBEDDING_MODEL=${EMBEDDING_MODEL} \
+    HF_HOME=/app/.cache/huggingface \
+    TRANSFORMERS_CACHE=/app/.cache/huggingface \
+    SENTENCE_TRANSFORMERS_HOME=/app/.cache/sentence_transformers \
+    # Ensure uv-installed packages are on the path
+    PATH="/app/.venv/bin:$PATH"
+
+# Copy the preload script
+COPY docker/scripts/preload_models.py /tmp/preload_models.py
+
+# Run the download as root so files land in /app/.cache owned by root,
+# then chown to sentinel before the final stage copies them.
+RUN python /tmp/preload_models.py \
+    && chown -R sentinel:sentinel /app/.cache
+
+# -----------------------------------------------------------------------------
+# Stage: production
+# -----------------------------------------------------------------------------
+FROM model-preload AS production
+
+# Data directories on named volumes (created by compose); ensure ownership
+RUN mkdir -p /app/data/uploads /app/data/faiss_indexes \
+    && chown -R sentinel:sentinel /app/data
+
+ENV PYTHONPATH=/app/backend/src \
+    HF_HOME=/app/.cache/huggingface \
+    TRANSFORMERS_CACHE=/app/.cache/huggingface \
+    SENTENCE_TRANSFORMERS_HOME=/app/.cache/sentence_transformers \
+    PATH="/app/.venv/bin:$PATH" \
+    APP_HOST=0.0.0.0 \
+    APP_PORT=8000
+
+USER sentinel
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["uvicorn", "sentinel.main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--workers", "1", \
+     "--no-access-log"]

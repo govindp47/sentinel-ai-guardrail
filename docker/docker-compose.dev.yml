@@ -1,0 +1,65 @@
+# =============================================================================
+# SentinelAI Guardrail — Development Compose
+# =============================================================================
+# Usage: docker compose -f docker/docker-compose.dev.yml up --build
+#
+# No Caddy in dev — backend is accessed directly on :8000.
+# Source is volume-mounted for hot reload via uvicorn --reload.
+# =============================================================================
+
+name: sentinelai-dev
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+      target: test
+    image: sentinelai-backend:dev
+    container_name: sentinel-backend-dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Hot-reload source mount — changes reflect without rebuild
+      - ../backend/src:/app/backend/src:ro
+      # Persist SQLite DB and FAISS indexes between restarts
+      - sentinel_data_dev:/app/data
+    env_file:
+      - ../.env
+    environment:
+      APP_ENV: development
+      LOG_FORMAT: console
+      LOG_LEVEL: DEBUG
+      DATABASE_URL: sqlite+aiosqlite:////app/data/sentinel_dev.db
+      FAISS_INDEX_DIR: /app/data/faiss_indexes
+      STORAGE_LOCAL_DIR: /app/data/uploads
+    command:
+      - uvicorn
+      - sentinel.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app/backend/src
+      - --log-level
+      - debug
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - sentinel-net
+
+volumes:
+  sentinel_data_dev:
+    name: sentinelai_data_dev
+
+networks:
+  sentinel-net:
+    name: sentinelai-dev-net
+    driver: bridge

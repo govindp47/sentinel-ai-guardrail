@@ -1,0 +1,174 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sentinel"
+version = "0.1.0"
+description = "SentinelAI Guardrail — AI output validation and guardrail pipeline"
+requires-python = ">=3.12"
+dependencies = [
+    # Web framework
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.32.1",
+
+    # Database
+    "sqlalchemy[asyncio]==2.0.36",
+    "alembic==1.14.0",
+    "aiosqlite==0.20.0",
+    "asyncpg==0.30.0",
+
+    # Configuration
+    "pydantic-settings==2.7.0",
+    "pydantic==2.10.3",
+
+    # Logging
+    "structlog==24.4.0",
+
+    # HTTP client
+    "httpx==0.28.1",
+
+    # ML / AI
+    "sentence-transformers==3.3.1",
+    "faiss-cpu==1.9.0",
+    "detoxify==0.5.2",
+    "torch==2.5.1",
+
+    # LLM providers
+    "ollama>=0.4.5",
+    "openai==1.57.4",
+
+    # Utilities
+    "python-multipart==0.0.20",
+    "python-jose[cryptography]==3.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    # Testing
+    "pytest==8.3.4",
+    "pytest-asyncio==0.25.0",
+    "pytest-cov==6.0.0",
+    "httpx==0.28.1",
+
+    # Type checking
+    "mypy==1.14.0",
+    "types-python-jose==3.3.4.20240106",
+
+    # Linting / formatting
+    "ruff==0.8.4",
+
+    # Security scanning
+    "bandit[toml]==1.8.0",
+
+    # Pre-commit
+    "pre-commit==4.0.1",
+
+    # SQLAlchemy + Pydantic mypy plugins
+    "sqlalchemy[mypy]==2.0.36",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend/src/sentinel"]
+
+[tool.hatch.build.targets.wheel.sources]
+"backend/src" = ""
+
+# ---------------------------------------------------------------------------
+# Ruff
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["backend/src"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+    "TID",  # flake8-tidy-imports
+    "S",    # bandit (subset via ruff)
+    "ANN",  # flake8-annotations
+]
+ignore = [
+    "S101",    # use of assert (needed in tests)
+    "S104",    # possible binding to all interfaces — intentional for APP_HOST default
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["sentinel"]
+force-sort-within-sections = true
+
+[tool.ruff.lint.per-file-ignores]
+"backend/src/sentinel/__init__.py" = ["F401"]
+"tests/**/*.py" = ["S101", "ANN"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+# Disallow star imports via custom rule enforcement
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_error_codes = true
+mypy_path = "backend/src"
+files = ["backend/src/sentinel/"]
+
+plugins = [
+    "pydantic.mypy",
+    "sqlalchemy.ext.mypy.plugin",
+]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["backend/tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--tb=short",
+    "-ra",
+]
+
+# ---------------------------------------------------------------------------
+# bandit
+# ---------------------------------------------------------------------------
+[tool.bandit]
+targets = ["backend/src/sentinel"]
+severity = "medium"
+confidence = "medium"
+exclude_dirs = ["backend/tests", ".venv"]
+skips = ["B101"]  # assert_used — handled in tests

@@ -17,6 +17,9 @@ build/
 .eggs/
 wheels/
 
+# Additional Python ignores
+*$py.class
+
 # Virtual environments
 .venv/
 venv/
@@ -44,6 +47,7 @@ coverage.xml
 .env
 .env.local
 .env.*.local
+.env.*
 !.env.example
 
 # -----------------------------------------------------------------------------
@@ -55,6 +59,7 @@ data/
 *.db-wal
 *.sqlite
 *.sqlite3
+instance/
 
 # FAISS indexes
 *.faiss
@@ -74,7 +79,10 @@ docker-compose.override.yml
 # -----------------------------------------------------------------------------
 frontend/node_modules/
 frontend/dist/
+frontend/dist-ssr/
 frontend/.cache/
+frontend/.vite/
+frontend/node_modules/.tmp/
 frontend/*.local
 
 # -----------------------------------------------------------------------------
@@ -108,3 +116,9 @@ Desktop.ini
 # -----------------------------------------------------------------------------
 *.log
 logs/
+
+# -----------------------------------------------------------------------------
+# Misc
+# -----------------------------------------------------------------------------
+*.pem
+*.key

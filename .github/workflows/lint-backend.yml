@@ -2,17 +2,9 @@ name: lint-backend
 
 on:
   push:
-    paths:
-      - "backend/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".github/workflows/lint-backend.yml"
+    branches: [main]
   pull_request:
-    paths:
-      - "backend/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".github/workflows/lint-backend.yml"
+    branches: [main]
 
 jobs:
   lint-backend:
@@ -23,12 +15,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check if backend files changed
+        id: check
+        run: |
+          git fetch origin main --depth=1 2>/dev/null || true
+          if git diff --name-only origin/main...HEAD 2>/dev/null | grep -qE '^(backend/|pyproject\.toml|uv\.lock)'; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Python 3.12
+        if: steps.check.outputs.skip == 'false'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install uv
+        if: steps.check.outputs.skip == 'false'
         uses: astral-sh/setup-uv@v4
         with:
           version: "0.4.27"
@@ -36,13 +42,21 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies (dev extras)
+        if: steps.check.outputs.skip == 'false'
         run: uv sync --frozen --extra dev
 
       - name: Ruff — lint
+        if: steps.check.outputs.skip == 'false'
         run: uv run ruff check backend/src/ --output-format=github
 
       - name: Ruff — format check
+        if: steps.check.outputs.skip == 'false'
         run: uv run ruff format --check backend/src/
 
       - name: mypy — strict type check
+        if: steps.check.outputs.skip == 'false'
         run: uv run mypy backend/src/sentinel/ --config-file=pyproject.toml
+
+      - name: Skip notice
+        if: steps.check.outputs.skip == 'true'
+        run: echo "No backend files changed — skipping lint."

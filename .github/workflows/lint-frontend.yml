@@ -19,7 +19,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check frontend exists
+        id: check
+        run: |
+          if [ ! -f frontend/package.json ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Node.js 20
+        if: steps.check.outputs.skip == 'false'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -27,13 +37,20 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
+        if: steps.check.outputs.skip == 'false'
         working-directory: frontend
         run: npm ci
 
       - name: ESLint
+        if: steps.check.outputs.skip == 'false'
         working-directory: frontend
         run: npm run lint
 
       - name: TypeScript type check
+        if: steps.check.outputs.skip == 'false'
         working-directory: frontend
         run: npm run type-check
+
+      - name: Skip notice
+        if: steps.check.outputs.skip == 'true'
+        run: echo "Frontend not yet scaffolded — skipping lint."

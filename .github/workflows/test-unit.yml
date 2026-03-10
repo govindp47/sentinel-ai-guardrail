@@ -20,7 +20,6 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # Use in-memory SQLite — no external services required
       DATABASE_URL: "sqlite+aiosqlite:///:memory:"
       APP_ENV: "development"
       LOG_FORMAT: "console"
@@ -46,11 +45,11 @@ jobs:
 
       - name: Run pytest
         run: |
-          uv run pytest backend/tests/ \
-            -x \
-            --tb=short \
-            -q \
-            --no-header
-        # Empty test suite exits 0 by default.
-        # If pytest-exit-on-no-tests is an issue, pass --ignore-glob as needed.
-        continue-on-error: false
+          uv run pytest backend/tests/ -x --tb=short -q --no-header
+          status=$?
+          # Exit code 5 = no tests collected — acceptable on empty scaffold
+          if [ $status -eq 5 ]; then
+            echo "No tests collected (empty scaffold) — treating as pass."
+            exit 0
+          fi
+          exit $status

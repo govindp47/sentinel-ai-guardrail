@@ -333,3 +333,65 @@ class TestDomainExceptions:
         assert issubclass(KBNotFoundError, SentinelBaseError)
         assert issubclass(PolicyViolationError, SentinelBaseError)
         assert issubclass(ValidationError, SentinelBaseError)
+
+
+class TestDomainExceptionsStringRepresentation:
+    """Verify exception __str__ and context dict for structlog integration."""
+
+    def test_sentinel_base_error_str(self) -> None:
+        exc = SentinelBaseError("something went wrong", module="domain")
+        assert "something went wrong" in str(exc)
+
+    def test_pipeline_stage_error_str(self) -> None:
+        exc = PipelineStageError("stage failed", stage_name="confidence_scoring", cause=None)
+        assert "stage failed" in str(exc)
+        assert exc.context["stage_name"] == "confidence_scoring"
+
+    def test_pipeline_stage_error_cause_none(self) -> None:
+        exc = PipelineStageError("failed", stage_name="injection_detection", cause=None)
+        assert exc.cause is None
+        assert exc.context["cause"] == "None"
+
+    def test_llm_timeout_error_context(self) -> None:
+        exc = LLMTimeoutError("timeout", provider="ollama", timeout_seconds=30.0)
+        assert exc.context["provider"] == "ollama"
+        assert exc.context["timeout_seconds"] == 30.0
+
+    def test_all_exceptions_inherit_sentinel_base(self) -> None:
+        exceptions = [
+            PipelineStageError("e", stage_name="s", cause=None),
+            LLMTimeoutError("e", provider="p", timeout_seconds=5.0),
+            LLMUnavailableError("e", provider="p"),
+            EmbeddingError("e", model_name="m"),
+            KBNotFoundError("e", kb_id="kb-1"),
+            PolicyViolationError("e", violated_category="v", risk_score=90),
+            ValidationError("e", field="f"),
+        ]
+        for exc in exceptions:
+            assert isinstance(exc, SentinelBaseError)
+            assert isinstance(exc.context, dict)
+            assert len(str(exc)) > 0
+
+    def test_policy_snapshot_default_module_flags(self) -> None:
+        p = PolicySnapshot()
+        assert p.module_flags["injection_detection"] is True
+        assert p.module_flags["safety_filters"] is True
+
+    def test_policy_snapshot_default_fallback_priority(self) -> None:
+        p = PolicySnapshot()
+        assert "retry_prompt" in p.fallback_priority
+        assert len(p.fallback_priority) == 4
+
+    def test_pipeline_context_kb_id_none(self) -> None:
+        from sentinel.domain.models.policy import PolicySnapshot as PS
+        ctx = PipelineContext(
+            request_id="r",
+            session_id="s",
+            original_prompt="p",
+            masked_prompt="p",
+            model_provider="ollama",
+            model_name="llama3",
+            kb_id=None,
+            policy=PS(),
+        )
+        assert ctx.kb_id is None

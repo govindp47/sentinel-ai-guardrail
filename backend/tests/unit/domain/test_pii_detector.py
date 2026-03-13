@@ -172,3 +172,50 @@ class TestEdgeCases:
     def test_pii_types_is_tuple(self, detector: PIIDetector) -> None:
         result = detector.check("user@example.com")
         assert isinstance(result.pii_types, tuple)
+
+
+class TestPIIAdditionalCoverage:
+    """Cover remaining branches not exercised by primary tests."""
+
+    def test_api_key_exactly_32_chars(self, detector: PIIDetector) -> None:
+        key = "sk-" + "z" * 32
+        result = detector.check(f"use key {key} now")
+        assert "api_key" in result.pii_types
+
+    def test_api_key_31_chars_not_detected(self, detector: PIIDetector) -> None:
+        # Boundary: 31 < 32 minimum → not an api_key match
+        key = "sk-" + "z" * 31
+        result = detector.check(f"use key {key} now")
+        assert "api_key" not in result.pii_types
+
+    def test_multiple_emails_all_masked(self, detector: PIIDetector) -> None:
+        prompt = "Contact a@b.com or c@d.org for support."
+        masked = detector.mask(prompt)
+        assert "a@b.com" not in masked
+        assert "c@d.org" not in masked
+        assert masked.count("[REDACTED_EMAIL]") == 2
+
+    def test_ssn_space_separator(self, detector: PIIDetector) -> None:
+        result = detector.check("SSN: 123 45 6789")
+        assert "ssn" in result.pii_types
+
+    def test_ssn_mixed_separator_not_detected(self, detector: PIIDetector) -> None:
+        # Back-reference requires same separator in both positions
+        result = detector.check("not ssn: 123-45 6789")
+        assert "ssn" not in result.pii_types
+
+    def test_pii_check_result_clean_factory(self, detector: PIIDetector) -> None:
+        from sentinel.domain.engines.prompt_validation.pii_detector import PIICheckResult
+        r = PIICheckResult.clean("hello world")
+        assert r.status == "pass"
+        assert r.pii_types == ()
+        assert r.masked_text == "hello world"
+
+    def test_whitespace_prompt_no_crash(self, detector: PIIDetector) -> None:
+        result = detector.check("   \t\n   ")
+        # Should not crash; may or may not flag (no PII in whitespace)
+        assert result.status in {"pass", "flag"}
+
+    def test_mask_preserves_non_pii_content(self, detector: PIIDetector) -> None:
+        prompt = "Hello world. Nothing suspicious here. Goodbye."
+        assert detector.mask(prompt) == prompt

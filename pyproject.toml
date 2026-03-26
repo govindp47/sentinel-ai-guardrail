@@ -11,36 +11,32 @@ dependencies = [
     # Web framework
     "fastapi==0.115.6",
     "uvicorn[standard]==0.32.1",
-
     # Database
     "sqlalchemy[asyncio]==2.0.36",
     "alembic==1.14.0",
     "aiosqlite==0.20.0",
     "asyncpg==0.30.0",
-
     # Configuration
     "pydantic-settings==2.7.0",
     "pydantic==2.10.3",
-
     # Logging
     "structlog==24.4.0",
-
     # HTTP client
     "httpx==0.28.1",
-
     # ML / AI
     "sentence-transformers==3.3.1",
     "faiss-cpu==1.9.0",
     "detoxify==0.5.2",
     "torch==2.5.1",
-
     # LLM providers
     "ollama>=0.4.5",
     "openai==1.57.4",
-
     # Utilities
     "python-multipart==0.0.20",
     "python-jose[cryptography]==3.3.0",
+    "numpy>=1.24,<2.0",
+    "cachetools>=5.3,<6",
+    "respx>=0.21",
 ]
 
 [project.optional-dependencies]
@@ -54,6 +50,7 @@ dev = [
     # Type checking
     "mypy==1.14.0",
     "types-python-jose==3.3.4.20240106",
+    "types-cachetools==5.5.0.20240820",
 
     # Linting / formatting
     "ruff==0.8.4",
@@ -161,6 +158,9 @@ addopts = [
     "--strict-markers",
     "--tb=short",
     "-ra",
+]
+markers = [
+    "faiss: marks tests that use FAISS (may segfault on macOS in combined runs)",
 ]
 
 # ---------------------------------------------------------------------------

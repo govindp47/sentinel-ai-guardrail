@@ -76,7 +76,7 @@ class Base(DeclarativeBase):
 # ---------------------------------------------------------------------------
 
 
-class SessionModel(Base):
+class SessionORM(Base):
     __tablename__ = "sessions"
     __table_args__ = (Index("idx_sessions_created_at", "created_at"),)
 
@@ -93,24 +93,24 @@ class SessionModel(Base):
     )
 
     # Relationships
-    policy_snapshots: Mapped[list[PolicySnapshotModel]] = relationship(
-        "PolicySnapshotModel",
+    policy_snapshots: Mapped[list[PolicySnapshotORM]] = relationship(
+        "PolicySnapshotORM",
         back_populates="session",
-        foreign_keys="PolicySnapshotModel.session_id",
+        foreign_keys="PolicySnapshotORM.session_id",
         cascade="all, delete-orphan",
     )
-    requests: Mapped[list[RequestModel]] = relationship(
-        "RequestModel",
-        back_populates="session",
-        cascade="all, delete-orphan",
-    )
-    kb_documents: Mapped[list[KbDocumentModel]] = relationship(
-        "KbDocumentModel",
+    requests: Mapped[list[RequestORM]] = relationship(
+        "RequestORM",
         back_populates="session",
         cascade="all, delete-orphan",
     )
-    analytics_counters: Mapped[list[AnalyticsCounterModel]] = relationship(
-        "AnalyticsCounterModel",
+    kb_documents: Mapped[list[KbDocumentORM]] = relationship(
+        "KbDocumentORM",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+    analytics_counters: Mapped[list[AnalyticsCounterORM]] = relationship(
+        "AnalyticsCounterORM",
         back_populates="session",
         cascade="all, delete-orphan",
     )
@@ -121,7 +121,7 @@ class SessionModel(Base):
 # ---------------------------------------------------------------------------
 
 
-class PolicySnapshotModel(Base):
+class PolicySnapshotORM(Base):
     __tablename__ = "policy_snapshots"
     __table_args__ = (
         CheckConstraint("accept_threshold BETWEEN 0 AND 100", name="ck_policy_accept_threshold"),
@@ -166,15 +166,15 @@ class PolicySnapshotModel(Base):
     )
 
     # Relationships
-    session: Mapped[SessionModel] = relationship(
-        "SessionModel",
+    session: Mapped[SessionORM] = relationship(
+        "SessionORM",
         back_populates="policy_snapshots",
         foreign_keys=[session_id],
     )
-    requests: Mapped[list[RequestModel]] = relationship(
-        "RequestModel",
+    requests: Mapped[list[RequestORM]] = relationship(
+        "RequestORM",
         back_populates="policy_snapshot",
-        foreign_keys="RequestModel.policy_snapshot_id",
+        foreign_keys="RequestORM.policy_snapshot_id",
     )
 
 
@@ -183,7 +183,7 @@ class PolicySnapshotModel(Base):
 # ---------------------------------------------------------------------------
 
 
-class KbDocumentModel(Base):
+class KbDocumentORM(Base):
     __tablename__ = "kb_documents"
     __table_args__ = (
         UniqueConstraint("storage_path", name="uq_kb_documents_storage_path"),
@@ -215,9 +215,9 @@ class KbDocumentModel(Base):
     indexed_at: Mapped[datetime | None] = mapped_column(DateTime(), nullable=True)
 
     # Relationships
-    session: Mapped[SessionModel] = relationship("SessionModel", back_populates="kb_documents")
-    chunks: Mapped[list[KbChunkModel]] = relationship(
-        "KbChunkModel",
+    session: Mapped[SessionORM] = relationship("SessionORM", back_populates="kb_documents")
+    chunks: Mapped[list[KbChunkORM]] = relationship(
+        "KbChunkORM",
         back_populates="document",
         cascade="all, delete-orphan",
     )
@@ -228,7 +228,7 @@ class KbDocumentModel(Base):
 # ---------------------------------------------------------------------------
 
 
-class KbChunkModel(Base):
+class KbChunkORM(Base):
     __tablename__ = "kb_chunks"
     __table_args__ = (
         UniqueConstraint("document_id", "chunk_index", name="uq_kb_chunks_document_chunk"),
@@ -251,9 +251,9 @@ class KbChunkModel(Base):
     )
 
     # Relationships
-    document: Mapped[KbDocumentModel] = relationship("KbDocumentModel", back_populates="chunks")
-    evidence_links: Mapped[list[ClaimEvidenceModel]] = relationship(
-        "ClaimEvidenceModel",
+    document: Mapped[KbDocumentORM] = relationship("KbDocumentORM", back_populates="chunks")
+    evidence_links: Mapped[list[ClaimEvidenceORM]] = relationship(
+        "ClaimEvidenceORM",
         back_populates="kb_chunk",
     )
 
@@ -263,7 +263,7 @@ class KbChunkModel(Base):
 # ---------------------------------------------------------------------------
 
 
-class AnalyticsCounterModel(Base):
+class AnalyticsCounterORM(Base):
     __tablename__ = "analytics_counters"
     __table_args__ = (
         # Unique index (not UniqueConstraint) — matches op.create_index(..., unique=True)
@@ -314,9 +314,7 @@ class AnalyticsCounterModel(Base):
     )
 
     # Relationships
-    session: Mapped[SessionModel] = relationship(
-        "SessionModel", back_populates="analytics_counters"
-    )
+    session: Mapped[SessionORM] = relationship("SessionORM", back_populates="analytics_counters")
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +322,7 @@ class AnalyticsCounterModel(Base):
 # ---------------------------------------------------------------------------
 
 
-class RequestModel(Base):
+class RequestORM(Base):
     __tablename__ = "requests"
     __table_args__ = (
         CheckConstraint("pii_detected IN (0, 1)", name="ck_requests_pii_detected"),
@@ -395,31 +393,34 @@ class RequestModel(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(), nullable=True)
 
     # Relationships
-    session: Mapped[SessionModel] = relationship("SessionModel", back_populates="requests")
-    policy_snapshot: Mapped[PolicySnapshotModel] = relationship(
-        "PolicySnapshotModel",
+    session: Mapped[SessionORM] = relationship("SessionORM", back_populates="requests")
+    policy_snapshot: Mapped[PolicySnapshotORM] = relationship(
+        "PolicySnapshotORM",
         back_populates="requests",
         foreign_keys=[policy_snapshot_id],
     )
-    replayed_from: Mapped[RequestModel | None] = relationship(
-        "RequestModel",
-        remote_side="RequestModel.id",
+    replayed_from: Mapped[RequestORM | None] = relationship(
+        "RequestORM",
+        remote_side="RequestORM.id",
         foreign_keys=[replayed_from_request_id],
         uselist=False,
     )
-    pipeline_traces: Mapped[list[PipelineTraceModel]] = relationship(
-        "PipelineTraceModel",
+    pipeline_traces: Mapped[list[PipelineTraceORM]] = relationship(
+        "PipelineTraceORM",
         back_populates="request",
+        lazy="select",
         cascade="all, delete-orphan",
     )
-    claims: Mapped[list[RequestClaimModel]] = relationship(
-        "RequestClaimModel",
+    claims: Mapped[list[RequestClaimORM]] = relationship(
+        "RequestClaimORM",
         back_populates="request",
+        lazy="select",
         cascade="all, delete-orphan",
     )
-    safety_filter_results: Mapped[list[SafetyFilterResultModel]] = relationship(
-        "SafetyFilterResultModel",
+    safety_filter_results: Mapped[list[SafetyFilterResultORM]] = relationship(
+        "SafetyFilterResultORM",
         back_populates="request",
+        lazy="select",
         cascade="all, delete-orphan",
     )
 
@@ -429,7 +430,7 @@ class RequestModel(Base):
 # ---------------------------------------------------------------------------
 
 
-class PipelineTraceModel(Base):
+class PipelineTraceORM(Base):
     __tablename__ = "pipeline_traces"
     __table_args__ = (
         UniqueConstraint(
@@ -471,7 +472,7 @@ class PipelineTraceModel(Base):
     )
 
     # Relationships
-    request: Mapped[RequestModel] = relationship("RequestModel", back_populates="pipeline_traces")
+    request: Mapped[RequestORM] = relationship("RequestORM", back_populates="pipeline_traces")
 
 
 # ---------------------------------------------------------------------------
@@ -479,7 +480,7 @@ class PipelineTraceModel(Base):
 # ---------------------------------------------------------------------------
 
 
-class RequestClaimModel(Base):
+class RequestClaimORM(Base):
     __tablename__ = "request_claims"
     __table_args__ = (
         CheckConstraint(
@@ -504,9 +505,9 @@ class RequestClaimModel(Base):
     )
 
     # Relationships
-    request: Mapped[RequestModel] = relationship("RequestModel", back_populates="claims")
-    evidence: Mapped[list[ClaimEvidenceModel]] = relationship(
-        "ClaimEvidenceModel",
+    request: Mapped[RequestORM] = relationship("RequestORM", back_populates="claims")
+    evidence: Mapped[list[ClaimEvidenceORM]] = relationship(
+        "ClaimEvidenceORM",
         back_populates="claim",
         cascade="all, delete-orphan",
     )
@@ -517,7 +518,7 @@ class RequestClaimModel(Base):
 # ---------------------------------------------------------------------------
 
 
-class ClaimEvidenceModel(Base):
+class ClaimEvidenceORM(Base):
     __tablename__ = "claim_evidence"
     __table_args__ = (
         CheckConstraint(
@@ -541,9 +542,9 @@ class ClaimEvidenceModel(Base):
     )
 
     # Relationships
-    claim: Mapped[RequestClaimModel] = relationship("RequestClaimModel", back_populates="evidence")
-    kb_chunk: Mapped[KbChunkModel | None] = relationship(
-        "KbChunkModel", back_populates="evidence_links"
+    claim: Mapped[RequestClaimORM] = relationship("RequestClaimORM", back_populates="evidence")
+    kb_chunk: Mapped[KbChunkORM | None] = relationship(
+        "KbChunkORM", back_populates="evidence_links"
     )
 
 
@@ -552,7 +553,7 @@ class ClaimEvidenceModel(Base):
 # ---------------------------------------------------------------------------
 
 
-class SafetyFilterResultModel(Base):
+class SafetyFilterResultORM(Base):
     __tablename__ = "safety_filter_results"
     __table_args__ = (
         CheckConstraint(
@@ -580,6 +581,4 @@ class SafetyFilterResultModel(Base):
     )
 
     # Relationships
-    request: Mapped[RequestModel] = relationship(
-        "RequestModel", back_populates="safety_filter_results"
-    )
+    request: Mapped[RequestORM] = relationship("RequestORM", back_populates="safety_filter_results")

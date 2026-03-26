@@ -1,110 +1,78 @@
-"""
-AnalyticsRepository — interface Protocol + NotImplementedError stub.
-"""
-
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from datetime import UTC, datetime
+from typing import Any
+import uuid
 
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sentinel.infrastructure.db.repositories.base import BaseRepository
+from sentinel.infrastructure.db.models import AnalyticsCounterORM
+
+# All incrementable counter columns (subset of delta keys allowed)
+COUNTER_COLUMNS = frozenset(
+    {
+        "total_requests",
+        "total_accepted",
+        "total_warned",
+        "total_retried",
+        "total_blocked",
+        "total_hallucinations_detected",
+        "total_safety_triggered",
+        "sum_confidence_score",
+        "sum_latency_ms",
+        "sum_tokens_in",
+        "sum_tokens_out",
+    }
+)
 
 
-class AnalyticsSummaryRow:
-    """Placeholder carrier for aggregate query results."""
-
-    ...
-
-
-class AnalyticsDailyRow:
-    """Placeholder carrier for daily breakdown rows."""
-
-    ...
-
-
-@runtime_checkable
-class AnalyticsRepositoryProtocol(Protocol):
-    async def upsert_counters(
-        self,
-        *,
-        id: str,
-        session_id: str,
-        date_bucket: str,
-        model_provider: str,
-        model_name: str,
-        accepted: bool,
-        warned: bool,
-        retried: bool,
-        blocked: bool,
-        hallucination_detected: bool,
-        safety_triggered: bool,
-        confidence_score: int,
-        latency_ms: int,
-        tokens_in: int,
-        tokens_out: int,
-    ) -> None: ...
-
-    async def get_summary_by_session(
-        self,
-        session_id: str,
-        *,
-        date_from: str | None = None,
-        date_to: str | None = None,
-        model_provider: str | None = None,
-    ) -> list[AnalyticsSummaryRow]: ...
-
-    async def get_daily_breakdown(
-        self,
-        session_id: str,
-        *,
-        date_from: str | None = None,
-        date_to: str | None = None,
-    ) -> list[AnalyticsDailyRow]: ...
-
-
-class AnalyticsRepository(BaseRepository):
-    """Stub implementation — all methods raise NotImplementedError (Phase 1)."""
-
+class AnalyticsRepository:
     def __init__(self, session: AsyncSession) -> None:
-        super().__init__(session)
+        self._session = session
 
     async def upsert_counters(
         self,
-        *,
-        id: str,
         session_id: str,
         date_bucket: str,
         model_provider: str,
         model_name: str,
-        accepted: bool,
-        warned: bool,
-        retried: bool,
-        blocked: bool,
-        hallucination_detected: bool,
-        safety_triggered: bool,
-        confidence_score: int,
-        latency_ms: int,
-        tokens_in: int,
-        tokens_out: int,
+        delta: dict[str, int],
     ) -> None:
-        raise NotImplementedError
+        """
+        Atomic INSERT ... ON CONFLICT DO UPDATE increment.
+        `delta` keys must be valid counter column names.
+        Unknown keys are silently ignored for safety.
+        Never performs a read-modify-write round-trip.
+        """
+        safe_delta = {k: v for k, v in delta.items() if k in COUNTER_COLUMNS}
 
-    async def get_summary_by_session(
-        self,
-        session_id: str,
-        *,
-        date_from: str | None = None,
-        date_to: str | None = None,
-        model_provider: str | None = None,
-    ) -> list[AnalyticsSummaryRow]:
-        raise NotImplementedError
+        # Build the INSERT row (new row values = delta values themselves)
+        insert_values: dict[str, Any] = {
+            "id": str(uuid.uuid4()),
+            "session_id": session_id,
+            "date_bucket": date_bucket,
+            "model_provider": model_provider,
+            "model_name": model_name,
+            "updated_at": datetime.now(UTC),
+            **{col: safe_delta.get(col, 0) for col in COUNTER_COLUMNS},
+        }
 
-    async def get_daily_breakdown(
-        self,
-        session_id: str,
-        *,
-        date_from: str | None = None,
-        date_to: str | None = None,
-    ) -> list[AnalyticsDailyRow]:
-        raise NotImplementedError
+        # Build the ON CONFLICT SET clause: col = col + excluded.col
+        update_clause: dict[str, Any] = {
+            col: getattr(AnalyticsCounterORM, col)
+            + getattr(sqlite_insert(AnalyticsCounterORM).excluded, col)
+            for col in safe_delta
+        }
+        update_clause["updated_at"] = datetime.now(UTC)
+
+        stmt = (
+            sqlite_insert(AnalyticsCounterORM)
+            .values(**insert_values)
+            .on_conflict_do_update(
+                index_elements=["session_id", "date_bucket", "model_provider", "model_name"],
+                set_=update_clause,
+            )
+        )
+        await self._session.execute(stmt)
+        await self._session.commit()

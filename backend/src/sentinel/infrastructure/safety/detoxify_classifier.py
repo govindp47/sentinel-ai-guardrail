@@ -21,7 +21,7 @@ def _predict_sync(text: str) -> dict[str, float]:
     Returns:
         dict mapping detoxify label names to float scores in [0, 1].
     """
-    from detoxify import Detoxify  # type: ignore[import-not-found]
+    from detoxify import Detoxify
 
     model = Detoxify("original")
     results: dict[str, Any] = model.predict(text)

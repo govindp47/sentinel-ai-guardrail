@@ -1,76 +1,47 @@
-"""
-SessionRepository — interface Protocol + NotImplementedError stub.
-"""
-
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Protocol, runtime_checkable
+from datetime import UTC, datetime
 
+from sqlalchemy import select, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sentinel.infrastructure.db.repositories.base import BaseRepository
+from sentinel.infrastructure.db.models import SessionORM
 
 
-class SessionRow:
-    """Placeholder carrier."""
-
-    ...
-
-
-@runtime_checkable
-class SessionRepositoryProtocol(Protocol):
-    async def create_or_get(
-        self,
-        session_id: str,
-    ) -> SessionRow: ...
-
-    async def update_last_active(
-        self,
-        session_id: str,
-        last_active_at: datetime,
-    ) -> None: ...
-
-    async def get_by_id(
-        self,
-        session_id: str,
-    ) -> SessionRow | None: ...
-
-    async def update_active_policy(
-        self,
-        session_id: str,
-        policy_snapshot_id: str,
-    ) -> None: ...
-
-
-class SessionRepository(BaseRepository):
-    """Stub implementation — all methods raise NotImplementedError (Phase 1)."""
-
+class SessionRepository:
     def __init__(self, session: AsyncSession) -> None:
-        super().__init__(session)
+        self._session = session
 
-    async def create_or_get(
-        self,
-        session_id: str,
-    ) -> SessionRow:
-        raise NotImplementedError
+    async def create_or_get(self, session_id: str) -> SessionORM:
+        """
+        Idempotent session creation using INSERT OR IGNORE (SQLite dialect).
+        Safe under concurrent calls with the same session_id.
+        """
+        stmt = (
+            sqlite_insert(SessionORM)
+            .values(
+                id=session_id,
+                created_at=datetime.now(UTC),
+                last_active_at=datetime.now(UTC),
+            )
+            .prefix_with("OR IGNORE")
+        )
+        await self._session.execute(stmt)
+        await self._session.flush()
 
-    async def update_last_active(
-        self,
-        session_id: str,
-        last_active_at: datetime,
-    ) -> None:
-        raise NotImplementedError
+        result = await self._session.execute(select(SessionORM).where(SessionORM.id == session_id))
+        row = result.scalar_one()
+        return row
 
-    async def get_by_id(
-        self,
-        session_id: str,
-    ) -> SessionRow | None:
-        raise NotImplementedError
-
-    async def update_active_policy(
-        self,
-        session_id: str,
-        policy_snapshot_id: str,
-    ) -> None:
-        raise NotImplementedError
+    async def update_last_active(self, session_id: str) -> None:
+        """
+        Single-statement timestamp update — no read-then-write.
+        """
+        stmt = (
+            update(SessionORM)
+            .where(SessionORM.id == session_id)
+            .values(last_active_at=datetime.now(UTC))
+        )
+        await self._session.execute(stmt)
+        await self._session.flush()

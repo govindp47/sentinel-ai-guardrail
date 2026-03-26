@@ -7,9 +7,8 @@ Uses alembic upgrade head to set up the schema (ensures ORM matches migration).
 
 from __future__ import annotations
 
-import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -25,19 +24,18 @@ if BACKEND_SRC not in sys.path:
     sys.path.insert(0, BACKEND_SRC)
 
 from sentinel.infrastructure.db.models import (
-    AnalyticsCounterModel,
+    AnalyticsCounterORM,
     Base,
-    ClaimEvidenceModel,
-    KbChunkModel,
-    KbDocumentModel,
-    PipelineTraceModel,
-    PolicySnapshotModel,
-    RequestClaimModel,
-    RequestModel,
-    SafetyFilterResultModel,
-    SessionModel,
+    ClaimEvidenceORM,
+    KbChunkORM,
+    KbDocumentORM,
+    PipelineTraceORM,
+    PolicySnapshotORM,
+    RequestClaimORM,
+    RequestORM,
+    SafetyFilterResultORM,
+    SessionORM,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -77,15 +75,15 @@ async def session(tmp_path: Path) -> AsyncGenerator[AsyncSession, None]:
 # Helpers for seeding parent rows
 # ---------------------------------------------------------------------------
 
-async def _make_session_row(s: AsyncSession) -> SessionModel:
-    row = SessionModel(id=_uid())
+async def _make_session_row(s: AsyncSession) -> SessionORM:
+    row = SessionORM(id=_uid())
     s.add(row)
     await s.flush()
     return row
 
 
-async def _make_policy(s: AsyncSession, session_id: str) -> PolicySnapshotModel:
-    row = PolicySnapshotModel(
+async def _make_policy(s: AsyncSession, session_id: str) -> PolicySnapshotORM:
+    row = PolicySnapshotORM(
         id=_uid(),
         session_id=session_id,
         accept_threshold=80,
@@ -104,8 +102,8 @@ async def _make_policy(s: AsyncSession, session_id: str) -> PolicySnapshotModel:
 
 async def _make_request(
     s: AsyncSession, session_id: str, policy_id: str
-) -> RequestModel:
-    row = RequestModel(
+) -> RequestORM:
+    row = RequestORM(
         id=_uid(),
         session_id=session_id,
         policy_snapshot_id=policy_id,
@@ -130,7 +128,7 @@ async def _make_request(
 async def test_session_insert_read(session: AsyncSession) -> None:
     row = await _make_session_row(session)
     await session.commit()
-    fetched = await session.get(SessionModel, row.id)
+    fetched = await session.get(SessionORM, row.id)
     assert fetched is not None
     assert fetched.id == row.id
     assert isinstance(fetched.created_at, datetime)
@@ -141,7 +139,7 @@ async def test_policy_snapshot_insert_read(session: AsyncSession) -> None:
     sess = await _make_session_row(session)
     policy = await _make_policy(session, sess.id)
     await session.commit()
-    fetched = await session.get(PolicySnapshotModel, policy.id)
+    fetched = await session.get(PolicySnapshotORM, policy.id)
     assert fetched is not None
     assert fetched.accept_threshold == 80
     # JSON columns round-trip as Python list/dict
@@ -152,7 +150,7 @@ async def test_policy_snapshot_insert_read(session: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_kb_document_insert_read(session: AsyncSession) -> None:
     sess = await _make_session_row(session)
-    doc = KbDocumentModel(
+    doc = KbDocumentORM(
         id=_uid(),
         session_id=sess.id,
         filename="doc.pdf",
@@ -164,7 +162,7 @@ async def test_kb_document_insert_read(session: AsyncSession) -> None:
     )
     session.add(doc)
     await session.commit()
-    fetched = await session.get(KbDocumentModel, doc.id)
+    fetched = await session.get(KbDocumentORM, doc.id)
     assert fetched is not None
     assert fetched.filename == "doc.pdf"
     assert fetched.status == "pending"
@@ -173,7 +171,7 @@ async def test_kb_document_insert_read(session: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_kb_chunk_insert_read(session: AsyncSession) -> None:
     sess = await _make_session_row(session)
-    doc = KbDocumentModel(
+    doc = KbDocumentORM(
         id=_uid(),
         session_id=sess.id,
         filename="doc.pdf",
@@ -185,7 +183,7 @@ async def test_kb_chunk_insert_read(session: AsyncSession) -> None:
     )
     session.add(doc)
     await session.flush()
-    chunk = KbChunkModel(
+    chunk = KbChunkORM(
         id=_uid(),
         document_id=doc.id,
         chunk_index=0,
@@ -196,7 +194,7 @@ async def test_kb_chunk_insert_read(session: AsyncSession) -> None:
     )
     session.add(chunk)
     await session.commit()
-    fetched = await session.get(KbChunkModel, chunk.id)
+    fetched = await session.get(KbChunkORM, chunk.id)
     assert fetched is not None
     assert fetched.chunk_text == "This is a chunk."
     assert fetched.faiss_vector_id == 42
@@ -205,7 +203,7 @@ async def test_kb_chunk_insert_read(session: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_analytics_counter_insert_read(session: AsyncSession) -> None:
     sess = await _make_session_row(session)
-    counter = AnalyticsCounterModel(
+    counter = AnalyticsCounterORM(
         id=_uid(),
         session_id=sess.id,
         date_bucket="2024-03-15",
@@ -220,7 +218,7 @@ async def test_analytics_counter_insert_read(session: AsyncSession) -> None:
     )
     session.add(counter)
     await session.commit()
-    fetched = await session.get(AnalyticsCounterModel, counter.id)
+    fetched = await session.get(AnalyticsCounterORM, counter.id)
     assert fetched is not None
     assert fetched.total_requests == 5
     assert fetched.sum_latency_ms == 12000
@@ -234,7 +232,7 @@ async def test_request_insert_read_json(session: AsyncSession) -> None:
     req.confidence_signal_breakdown = {"evidence_similarity": 0.88, "claim_ratio": 0.75}
     req.pii_types_detected = ["email", "phone"]
     await session.commit()
-    fetched = await session.get(RequestModel, req.id)
+    fetched = await session.get(RequestORM, req.id)
     assert fetched is not None
     assert fetched.confidence_signal_breakdown == {
         "evidence_similarity": 0.88,
@@ -248,7 +246,7 @@ async def test_pipeline_trace_insert_read(session: AsyncSession) -> None:
     sess = await _make_session_row(session)
     policy = await _make_policy(session, sess.id)
     req = await _make_request(session, sess.id, policy.id)
-    trace = PipelineTraceModel(
+    trace = PipelineTraceORM(
         id=_uid(),
         request_id=req.id,
         attempt_number=1,
@@ -259,7 +257,7 @@ async def test_pipeline_trace_insert_read(session: AsyncSession) -> None:
     )
     session.add(trace)
     await session.commit()
-    fetched = await session.get(PipelineTraceModel, trace.id)
+    fetched = await session.get(PipelineTraceORM, trace.id)
     assert fetched is not None
     assert fetched.stage_name == "prompt_received"
     assert fetched.stage_metadata == {"info": "ok"}
@@ -270,7 +268,7 @@ async def test_request_claim_insert_read(session: AsyncSession) -> None:
     sess = await _make_session_row(session)
     policy = await _make_policy(session, sess.id)
     req = await _make_request(session, sess.id, policy.id)
-    claim = RequestClaimModel(
+    claim = RequestClaimORM(
         id=_uid(),
         request_id=req.id,
         attempt_number=1,
@@ -281,7 +279,7 @@ async def test_request_claim_insert_read(session: AsyncSession) -> None:
     )
     session.add(claim)
     await session.commit()
-    fetched = await session.get(RequestClaimModel, claim.id)
+    fetched = await session.get(RequestClaimORM, claim.id)
     assert fetched is not None
     assert fetched.verification_status == "supported"
     assert fetched.confidence_contribution == pytest.approx(0.85)
@@ -292,7 +290,7 @@ async def test_claim_evidence_insert_read(session: AsyncSession) -> None:
     sess = await _make_session_row(session)
     policy = await _make_policy(session, sess.id)
     req = await _make_request(session, sess.id, policy.id)
-    claim = RequestClaimModel(
+    claim = RequestClaimORM(
         id=_uid(),
         request_id=req.id,
         attempt_number=1,
@@ -302,7 +300,7 @@ async def test_claim_evidence_insert_read(session: AsyncSession) -> None:
     )
     session.add(claim)
     await session.flush()
-    evidence = ClaimEvidenceModel(
+    evidence = ClaimEvidenceORM(
         id=_uid(),
         claim_id=claim.id,
         kb_chunk_id=None,
@@ -311,7 +309,7 @@ async def test_claim_evidence_insert_read(session: AsyncSession) -> None:
     )
     session.add(evidence)
     await session.commit()
-    fetched = await session.get(ClaimEvidenceModel, evidence.id)
+    fetched = await session.get(ClaimEvidenceORM, evidence.id)
     assert fetched is not None
     assert fetched.relevance_score == pytest.approx(0.91)
     assert fetched.kb_chunk_id is None
@@ -322,7 +320,7 @@ async def test_safety_filter_result_insert_read(session: AsyncSession) -> None:
     sess = await _make_session_row(session)
     policy = await _make_policy(session, sess.id)
     req = await _make_request(session, sess.id, policy.id)
-    sfr = SafetyFilterResultModel(
+    sfr = SafetyFilterResultORM(
         id=_uid(),
         request_id=req.id,
         attempt_number=1,
@@ -332,7 +330,7 @@ async def test_safety_filter_result_insert_read(session: AsyncSession) -> None:
     )
     session.add(sfr)
     await session.commit()
-    fetched = await session.get(SafetyFilterResultModel, sfr.id)
+    fetched = await session.get(SafetyFilterResultORM, sfr.id)
     assert fetched is not None
     assert fetched.filter_name == "toxicity"
     assert fetched.score == pytest.approx(0.02)
@@ -351,5 +349,5 @@ async def test_session_cascade_delete(session: AsyncSession) -> None:
     await session.delete(sess)
     await session.commit()
 
-    assert await session.get(RequestModel, req_id) is None
-    assert await session.get(PolicySnapshotModel, policy_id) is None
+    assert await session.get(RequestORM, req_id) is None
+    assert await session.get(PolicySnapshotORM, policy_id) is None

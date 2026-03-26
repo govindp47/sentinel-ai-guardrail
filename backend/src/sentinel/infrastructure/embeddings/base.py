@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-import numpy as np  # type: ignore[import-not-found]
+import numpy as np
 
 # Type alias for float32 ndarray
 type NDArray = np.ndarray[Any, np.dtype[np.floating[Any]]]

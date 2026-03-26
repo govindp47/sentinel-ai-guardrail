@@ -4,9 +4,9 @@ import asyncio
 import functools
 from typing import Any, cast
 
-from cachetools import LRUCache  # type: ignore[import-untyped]
-import numpy as np  # type: ignore[import-not-found]
-from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+from cachetools import LRUCache
+import numpy as np
+from sentence_transformers import SentenceTransformer
 
 # Type alias for float32 ndarray
 type NDArray = np.ndarray[Any, np.dtype[np.floating[Any]]]
@@ -120,6 +120,6 @@ class SentenceTransformerAdapter:
     def cache_info(self) -> dict[str, int]:
         """Return current LRU cache hit/miss counters and size."""
         return {
-            "currsize": self._cache.currsize,
-            "maxsize": self._cache.maxsize,
+            "currsize": int(self._cache.currsize),
+            "maxsize": int(self._cache.maxsize),
         }

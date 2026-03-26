@@ -36,6 +36,7 @@ dependencies = [
     "python-jose[cryptography]==3.3.0",
     "numpy>=1.24,<2.0",
     "cachetools>=5.3,<6",
+    "respx>=0.21",
 ]
 
 [project.optional-dependencies]
@@ -49,6 +50,7 @@ dev = [
     # Type checking
     "mypy==1.14.0",
     "types-python-jose==3.3.4.20240106",
+    "types-cachetools==5.5.0.20240820",
 
     # Linting / formatting
     "ruff==0.8.4",
@@ -131,6 +133,10 @@ warn_unused_ignores = true
 show_error_codes = true
 mypy_path = "backend/src"
 files = ["backend/src/sentinel/"]
+
+[[tool.mypy.overrides]]
+module = "detoxify"
+ignore_missing_imports = true
 
 plugins = [
     "pydantic.mypy",

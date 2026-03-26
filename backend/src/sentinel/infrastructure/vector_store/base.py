@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-import numpy as np  # type: ignore[import-not-found]
+import numpy as np
 
 # Type aliases
 type FloatArray = np.ndarray[Any, np.dtype[np.floating[Any]]]

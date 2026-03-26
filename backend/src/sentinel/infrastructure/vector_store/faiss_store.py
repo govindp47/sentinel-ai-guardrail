@@ -4,8 +4,8 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-import faiss  # type: ignore[import-not-found]
-import numpy as np  # type: ignore[import-not-found]
+import faiss  # type: ignore[import-untyped]
+import numpy as np
 
 # Type aliases
 type FloatArray = np.ndarray[Any, np.dtype[np.floating[Any]]]
